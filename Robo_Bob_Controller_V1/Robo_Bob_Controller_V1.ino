@@ -7,6 +7,7 @@
 
 // ------------------------------------------------------------------------------------------------------
 
+//Joystick
 #define JS_BUTTON 6 //Joystick - button - digital
 #define JS_X A0 //Joystick - x-axis - analog
 #define JS_Y A1 //Joystick - y-axis - analog
@@ -17,10 +18,23 @@ int js_y = 0; //The offset from the center pos
 bool js_button = false;
 bool js_button_toggle = false;
 
-
+//Radio
 RF24 radio(7, 8); // CE, CSN
 const byte address[6] = "00001";
 
+//LEDs
+#define L_MODE 9
+#define L_STRENGTH_1 10
+#define L_STRENGTH_2 11
+#define L_STRENGTH_3 12
+
+//Button
+#define B_PIN 22
+bool b_state = false;
+bool b_state_toggle = false;
+int b_strength_counter = 1; //1, 2 or 3
+
+//General
 #define UPDATE_INTERVALL 50 //The intervall in ms in which we scan and send the new data
 #define DEBUG true 
 
@@ -30,6 +44,7 @@ const byte address[6] = "00001";
 //Needs to be synchronised so the same as in the receiver side code
 struct Transmission_Data {
   bool t = false;   //Button toggle
+  int s = 1;        //Strength level
   int x = 0;        //x-axis
   int y = 0;        //y-axis
 };
@@ -53,8 +68,22 @@ void setup() {
   radio.setPALevel(RF24_PA_MAX); //Set power usage, min or max or something between
   radio.stopListening(); //Sender - not receiving
 
+  //LEDs
+  pinMode(L_MODE, OUTPUT);
+  digitalWrite(L_MODE, LOW);
+  pinMode(L_STRENGTH_1, OUTPUT);
+  digitalWrite(L_STRENGTH_1, LOW);
+  pinMode(L_STRENGTH_2, OUTPUT);
+  digitalWrite(L_STRENGTH_2, LOW);
+  pinMode(L_STRENGTH_3, OUTPUT);
+  digitalWrite(L_STRENGTH_3, LOW);
+
+  //Button
+  pinMode(B_PIN, INPUT);
+  
   //Internal LED
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
   
   Serial.println("Startup complete!");
   
@@ -65,9 +94,10 @@ void setup() {
 void loop() {
 
   updateJoystickData();
-  Transmission_Data data = createTransmittionData(js_button_toggle, js_x, js_y);
+  updateButtonState();
+  Transmission_Data data = createTransmittionData(js_button_toggle, b_strength_counter, js_x, js_y);
   sendData(data);
-  updateDebug();
+  updateVisuals();
   delay(UPDATE_INTERVALL);
   
 }
@@ -89,8 +119,8 @@ void updateJoystickData() {
     Serial.print(js_x);
     Serial.print(" | y=");
     Serial.print(js_y);
-    Serial.print(" | button=");
-    Serial.print(js_button);
+    Serial.print(" | strength=");
+    Serial.print(b_strength_counter);
     Serial.print(" | toggle=");
     Serial.print(js_button_toggle);
     Serial.println(""); 
@@ -102,15 +132,8 @@ void js_button_action(bool newState) {
   if(newState == 1) {
     //Now pressed
     js_button_toggle = !js_button_toggle;
-    if(DEBUG == true) {
-      Serial.println("Pressed");
-    }
   }else {
     //Now released
-
-    if(DEBUG == true) {
-      Serial.println("Released");
-    }
   }
 }
 
@@ -124,10 +147,38 @@ int removeZeroJiggle(int value) {
 
 // ------------------------------------------------------------------------------------------------------
 
+//Reads the values from the external button and updates the representing vars
+void updateButtonState() {
+
+  bool newState = digitalRead(B_PIN);
+  if(newState != b_state) {
+    //Pressed or released
+    if(newState == true) {
+      //Now pressed
+      b_state_toggle = true;
+    
+      //Do toggle action here
+      b_strength_counter = b_strength_counter+1;
+      if(b_strength_counter > 3) {
+        b_strength_counter = 1;
+      }
+    
+    }else {
+      //Now released
+      b_state_toggle = false;
+    }
+  }
+  b_state = newState;
+  
+}
+
+// ------------------------------------------------------------------------------------------------------
+
 //Packs the given data into the data struct, size limit: 32 bytes!
-Transmission_Data createTransmittionData(boolean button_toggle, int x, int y) {
+Transmission_Data createTransmittionData(boolean button_toggle, int strength_level, int x, int y) {
   Transmission_Data data; //New struct
   data.t = button_toggle;
+  data.s = strength_level;
   data.x = x*(-1); //x is inverted from the joystick
   data.y = y;
   return data;
@@ -135,18 +186,42 @@ Transmission_Data createTransmittionData(boolean button_toggle, int x, int y) {
 
 //Send the given Transmission_Data struct over the radio connection, size limit: 32 bytes!
 void sendData(Transmission_Data data) {
+  digitalWrite(LED_BUILTIN, HIGH);
   radio.write(&data, sizeof(Transmission_Data));
-  //delay(500);
+  delay(20);
+  digitalWrite(LED_BUILTIN, LOW);
 }
 
 // ------------------------------------------------------------------------------------------------------
 
-void updateDebug() {
-  Serial.print("Data send [Size = "); Serial.print(sizeof(Transmission_Data)); Serial.println(" bytes]");
+//Debug in console and set display led states
+void updateVisuals() {
+  if(DEBUG == true) {
+    Serial.print("Data send [Size = "); Serial.print(sizeof(Transmission_Data)); Serial.println(" bytes]");
+  }
+  //MODE
   if(js_button_toggle == true) {
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(L_MODE, HIGH);
   }else {
-    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(L_MODE, LOW);
+  }
+  //STRENGTH
+  if(b_strength_counter == 1) {
+    digitalWrite(L_STRENGTH_1, HIGH);
+    digitalWrite(L_STRENGTH_2, LOW);
+    digitalWrite(L_STRENGTH_3, LOW);
+  }else if(b_strength_counter == 2) {
+    digitalWrite(L_STRENGTH_1, HIGH);
+    digitalWrite(L_STRENGTH_2, HIGH);
+    digitalWrite(L_STRENGTH_3, LOW);
+  }else if(b_strength_counter == 3) {
+    digitalWrite(L_STRENGTH_1, HIGH);
+    digitalWrite(L_STRENGTH_2, HIGH);
+    digitalWrite(L_STRENGTH_3, HIGH);
+  }else {
+    digitalWrite(L_STRENGTH_1, LOW);
+    digitalWrite(L_STRENGTH_2, LOW);
+    digitalWrite(L_STRENGTH_3, LOW);
   }
 }
 

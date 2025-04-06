@@ -44,13 +44,13 @@ int m_br_direction = BRAKE; //Motor - BackRight - direction - int
 
 //Speed
 //#define MIN_SPEED 74 // So speeds given from 1 = 128 to 181 = 255 (Range: 1 to 181 aka 75 to 255)
-#define MIN_SPEED 90 // So speeds given from 1 = 128 to 181 = 255 (Range: 1 to 181 aka 75 to 255)
-//const int MAX_POWER = 255; //The total cap of power we give each motor, max they can 255
-const int MAX_POWER = 130; 
-const int MAX_SPEED = MAX_POWER-MIN_SPEED; // So speeds given from 1 = 128 to 181 = 255 (Range: 1 to 181 aka 75 to 255)
+#define MIN_SPEED 90 // So speeds given from 1 = 128 to 165 = 255 (Range: 1 to 165 aka 91 to 255)
+int strength_level = 1; //1, 2 or 3 - low, medium and high
+int MAX_POWER = 130; //init on low strength level
+int MAX_SPEED = MAX_POWER-MIN_SPEED;
 const int MAX_SPEED_UP = 503;
 const int MAX_SPEED_DOWN = 517;
-const int MAX_TURN = MAX_POWER-MIN_SPEED; // So speeds given from 1 = 128 to 181 = 255 (Range: 1 to 181 aka 75 to 255)
+int MAX_TURN = MAX_POWER-MIN_SPEED;
 const int MAX_TURN_LEFT = 505;
 const int MAX_TURN_RIGHT = 511;
 
@@ -76,6 +76,7 @@ int noneReceives = MAX_NONE_RECEIVES; //Set to max, so it gives a sound on conne
 //Needs to be synchronised so the same as in the receiver side code
 struct Transmission_Data {
   bool t = false;   //Button toggle
+  int s = 1;        //Strength level
   int x = 0;        //x-axis
   int y = 0;        //y-axis
 };
@@ -151,6 +152,8 @@ void loop() {
     Transmission_Data data = receiveData();
 
     //Do stuff
+    int strength_level = data.s;
+    updateMaxLevel(strength_level);
     int speed = data.x;
     int realMotorSpeed = adjustSpeed(speed); //Always a positiv speed
     int turn = data.y; // + = Links | - = Rechts
@@ -261,6 +264,23 @@ void loop() {
 }
 
 // ------------------------------------------------------------------------------------------------------
+
+//Update the speed values by a given strength level
+void updateMaxLevel(int new_strength_level) {
+  strength_level = new_strength_level;
+  if(strength_level == 3) {
+    //FAST
+    MAX_POWER = 255;
+  }else if(strength_level == 2) {
+    //MEDIUM
+    MAX_POWER = 200;
+  }else {
+    //SLOW
+    MAX_POWER = 130;
+  }
+  MAX_SPEED = MAX_POWER-MIN_SPEED;
+  MAX_TURN = MAX_POWER-MIN_SPEED;
+}
 
 //Returns the real motorSpeed (always positiv) from the given transmitted speed (from - over 0 to +)
 int adjustSpeed(int speed) {
