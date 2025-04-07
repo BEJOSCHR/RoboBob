@@ -141,17 +141,12 @@ void loop() {
   // Check whether there is data to be received
   if(radio.available()) {
 
-    if(noneReceives >= MAX_NONE_RECEIVES) {
-      //First connect - 1x SOUND
-      digitalWrite(SOUND_PIN, HIGH);
-      delay(30);
-      digitalWrite(SOUND_PIN, LOW);
-    }
-    noneReceives = 0;
+    fineConnection();
         
     Transmission_Data data = receiveData();
 
     //Do stuff
+    int selected_mode = data.t;
     int strength_level = data.s;
     updateMaxLevel(strength_level);
     int speed = data.x;
@@ -167,61 +162,12 @@ void loop() {
       Serial.println(""); 
     }
 
-    if(speed == 0) {
-      //Turn on the spot
-      if(turn > 0) {
-        //To the left
-        bob_turnLeft(realMotorTurn, realMotorTurn*1, true);
-        if(DEBUG == true) { Serial.println(">>> Turn on the spot to the left"); }
-      }else if(turn < 0) {
-        //To the right
-        bob_turnRight(realMotorTurn, realMotorTurn*1, true);
-        if(DEBUG == true) { Serial.println(">>> Turn on the spot to the right"); }
-      }else {
-        //Just stay still
-        bob_brake(true);
-        //bob_brake(false);
-        if(DEBUG == true) { Serial.println(">>> Braking!!!"); }
-      }
+    if(selected_mode == false) {
+      //Normal "turn" mode (tank driving)
+      driveMode_Turn(speed, realMotorSpeed, turn, realMotorTurn);
     }else {
-      //Move
-      if(turn == 0) {
-        //Move straight
-        if(speed > 0) {
-          //Forward
-          bob_forward(realMotorSpeed, data.t);
-            if(DEBUG == true) { Serial.println(">>> Just Forward"); }
-        }else {
-          //Backwards
-          bob_backward(realMotorSpeed, data.t);
-            if(DEBUG == true) { Serial.println(">>> Just Backward"); }
-        }
-      }else {
-        //Move with turn
-        if(speed > 0) {
-          //Forward
-          if(turn > 0) {
-            //To the left
-            bob_turnLeft(realMotorSpeed+realMotorTurn, realMotorTurn, true);
-            if(DEBUG == true) { Serial.println(">>> Forward to the left"); }
-          }else if(turn < 0) {
-            //To the right
-            bob_turnRight(realMotorSpeed+realMotorTurn, realMotorTurn, true);
-            if(DEBUG == true) { Serial.println(">>> Forward to the right"); }
-          }
-        }else {
-          //Backwards
-          if(turn > 0) {
-            //To the left
-            bob_turnLeft(realMotorSpeed+realMotorTurn, MAX_TURN_LEFT+realMotorTurn, true); //Increase low wheels speed so they go "backwards", but keep driving "forwards"
-            if(DEBUG == true) { Serial.println(">>> Backwards to the left"); }
-          }else if(turn < 0) {
-            //To the right
-            bob_turnRight(realMotorSpeed+realMotorTurn, MAX_TURN_RIGHT+realMotorTurn, true); //Increase low wheels speed so they go "backwards", but keep driving "forwards"
-            if(DEBUG == true) { Serial.println(">>> Backwards to the right"); }
-          }
-        }
-      }
+      //Special "strave" mode (crab driving)
+      driveMode_Strave(speed, realMotorSpeed, turn, realMotorTurn);
     }
 
     last_data = data;    
@@ -235,32 +181,46 @@ void loop() {
       Serial.println(""); 
     }
   }else {
-    if(noneReceives > MAX_NONE_RECEIVES) {
-      //Blink
-      digitalWrite(LED_BUILTIN, HIGH);
-      delay(50);
-      digitalWrite(LED_BUILTIN, LOW);
-    }else{
-      noneReceives += 1;
-      if(noneReceives == MAX_NONE_RECEIVES) {
-        //No connection - BRAKE!!!
-        bob_brake(true);
-        //First disconnect - 3x SOUND
-        for(int i = 3 ; i > 0 ; i--) {
-          digitalWrite(SOUND_PIN, HIGH);
-          delay(30);
-          digitalWrite(SOUND_PIN, LOW);
-          delay(60);
-        }
-      }
-    }
-    if(DEBUG == true) {
-      Serial.println("Nothing received");
-    }
+    noConnection();
   }
 
   delay(UPDATE_INTERVALL);
   
+}
+
+void noConnection() {
+  if(noneReceives > MAX_NONE_RECEIVES) {
+    //Blink
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(50);
+    digitalWrite(LED_BUILTIN, LOW);
+  }else{
+    noneReceives += 1;
+    if(noneReceives == MAX_NONE_RECEIVES) {
+      //No connection - BRAKE!!!
+      bob_brake(true);
+      //First disconnect - 3x SOUND
+      for(int i = 3 ; i > 0 ; i--) {
+        digitalWrite(SOUND_PIN, HIGH);
+        delay(30);
+        digitalWrite(SOUND_PIN, LOW);
+        delay(60);
+      }
+    }
+  }
+  if(DEBUG == true) {
+    Serial.println("Nothing received");
+  }
+}
+
+void fineConnection() {
+  if(noneReceives >= MAX_NONE_RECEIVES) {
+    //First connect - 1x SOUND
+    digitalWrite(SOUND_PIN, HIGH);
+    delay(30);
+    digitalWrite(SOUND_PIN, LOW);
+  }
+  noneReceives = 0;
 }
 
 // ------------------------------------------------------------------------------------------------------
@@ -328,6 +288,125 @@ int adjustTurn(int speed) {
 
 double flatTurnFunction(double x) {
   return 1.0*pow(x, 9);
+}
+
+// ------------------------------------------------------------------------------------------------------
+
+//Driving in the normal car style mode with turning
+// speed = up(+)/down(-) | turn = left(+)/right(-)
+void driveMode_Turn(int speed, int realMotorSpeed, int turn, int realMotorTurn) {
+  if(DEBUG == true) { Serial.print("[TURN] "); }
+  if(speed == 0) {
+    //Turn on the spot
+    if(turn > 0) {
+      //To the left
+      bob_turnLeft(realMotorTurn, realMotorTurn*1, true);
+      if(DEBUG == true) { Serial.println(">>> Turn on the spot to the left"); }
+    }else if(turn < 0) {
+      //To the right
+      bob_turnRight(realMotorTurn, realMotorTurn*1, true);
+      if(DEBUG == true) { Serial.println(">>> Turn on the spot to the right"); }
+    }else {
+      //Just stay still
+      bob_brake(true);
+      //bob_brake(false);
+      if(DEBUG == true) { Serial.println(">>> Braking!!!"); }
+    }
+  }else {
+    //Move
+    if(turn == 0) {
+      //Move straight
+      if(speed > 0) {
+        //Forward
+        bob_forward(realMotorSpeed, true);
+        if(DEBUG == true) { Serial.println(">>> Just Forward"); }
+      }else {
+        //Backwards
+        bob_backward(realMotorSpeed, true);
+        if(DEBUG == true) { Serial.println(">>> Just Backward"); }
+      }
+    }else {
+      //Move with turn
+      if(speed > 0) {
+        //Forward
+        if(turn > 0) {
+          //To the left
+          bob_turnLeft(realMotorSpeed+realMotorTurn, realMotorTurn, true);
+          if(DEBUG == true) { Serial.println(">>> Forward to the left"); }
+        }else if(turn < 0) {
+          //To the right
+          bob_turnRight(realMotorSpeed+realMotorTurn, realMotorTurn, true);
+          if(DEBUG == true) { Serial.println(">>> Forward to the right"); }
+        }
+      }else {
+        //Backwards
+        if(turn > 0) {
+          //To the left
+          bob_turnLeft(realMotorSpeed+realMotorTurn, MAX_TURN_LEFT+realMotorTurn, true); //Increase low wheels speed so they go "backwards", but keep driving "forwards"
+          if(DEBUG == true) { Serial.println(">>> Backwards to the left"); }
+        }else if(turn < 0) {
+          //To the right
+          bob_turnRight(realMotorSpeed+realMotorTurn, MAX_TURN_RIGHT+realMotorTurn, true); //Increase low wheels speed so they go "backwards", but keep driving "forwards"
+          if(DEBUG == true) { Serial.println(">>> Backwards to the right"); }
+        }
+      }
+    }
+  }
+}
+
+//Driving in the crab mode like straving left right and diagonal instead of turning
+// speed = up(+)/down(-) | turn = left(+)/right(-)
+void driveMode_Strave(int speed, int realMotorSpeed, int turn, int realMotorTurn) {
+  if(DEBUG == true) { Serial.print("[STRAVE] "); }
+  //if(speed > MAX_SPEED_UP/5) {
+  if(speed > 0) {
+    //Go forward or turn
+    if(turn == 0) {
+      //Go forward
+      bob_forward(realMotorSpeed, true);
+      if(DEBUG == true) { Serial.println(">>> Just Forward"); }
+    }else if(turn > 0) {
+      //Turn left
+      bob_turnLeft(realMotorTurn, realMotorTurn*1, true);
+      if(DEBUG == true) { Serial.println(">>> Turn on the spot to the left"); }
+    }else if(turn < 0) {
+      //Turn right
+      bob_turnRight(realMotorTurn, realMotorTurn*1, true);
+      if(DEBUG == true) { Serial.println(">>> Turn on the spot to the right"); }
+    }
+  //}else if(speed < (MAX_SPEED_DOWN/5)*(-1)) {
+  }else if(speed < 0) {
+    //Go backwards or turn
+    if(turn == 0) {
+      //Go backward
+      bob_backward(realMotorSpeed, true);
+      if(DEBUG == true) { Serial.println(">>> Just Backward"); }
+    }else if(turn > 0) {
+      //Turn left
+      bob_turnLeft(realMotorTurn, realMotorTurn*1, false);
+      if(DEBUG == true) { Serial.println(">>> Turn on the spot to the left [backwards]"); }
+    }else if(turn < 0) {
+      //Turn right
+      bob_turnRight(realMotorTurn, realMotorTurn*1, false);
+      if(DEBUG == true) { Serial.println(">>> Turn on the spot to the right [backwards]"); }
+    }
+  }else {
+    //Strave left or right or break
+    if(turn == 0) {
+      bob_brake(true);
+      //bob_break(false);
+      if(DEBUG == true) { Serial.println(">>> Braking!!!"); }
+    }else if(turn > 0) {
+      //Strave left
+      bob_straveLeft(realMotorTurn);
+      if(DEBUG == true) { Serial.println(">>> Strave to the left"); }
+    }else if(turn < 0) {
+      //Strave right
+      bob_straveRight(realMotorTurn);
+      if(DEBUG == true) { Serial.println(">>> Strave to the right"); }
+    }
+    
+  }
 }
 
 // ------------------------------------------------------------------------------------------------------
@@ -460,6 +539,27 @@ void bob_turnRight(int speed, int turnSpeed, bool forward) {
       motorAction(M_BR, BRAKE, 0); 
     }
   }
+}
+
+const double frontBuff = 1.45;
+const double backBuff = 1.3;
+//Use mecanum power to strave to the LEFT with the given speed
+void bob_straveLeft(int speed) {
+  int frontSpeed = (int) (speed*frontBuff);
+  int backSpeed = (int) (speed*backBuff);
+  motorAction(M_FL, BACKWARD, frontSpeed);
+  motorAction(M_BL, FORWARD, backSpeed);
+  motorAction(M_FR, FORWARD, frontSpeed);
+  motorAction(M_BR, BACKWARD, backSpeed);
+}
+//Use mecanum wheels power to strave to the RIGHT with the given speed
+void bob_straveRight(int speed) {
+  int frontSpeed = (int) (speed*frontBuff);
+  int backSpeed = (int) (speed*backBuff);
+  motorAction(M_FL, FORWARD, frontSpeed);
+  motorAction(M_BL, BACKWARD, backSpeed);
+  motorAction(M_FR, BACKWARD, frontSpeed);
+  motorAction(M_BR, FORWARD, backSpeed);
 }
 
 //Change the speed and the direction of the given motor 

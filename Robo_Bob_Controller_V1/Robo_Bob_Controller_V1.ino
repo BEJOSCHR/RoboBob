@@ -7,6 +7,9 @@
 
 // ------------------------------------------------------------------------------------------------------
 
+//Disable flag
+bool disable_all = false;
+
 //Joystick
 #define JS_BUTTON 6 //Joystick - button - digital
 #define JS_X A0 //Joystick - x-axis - analog
@@ -36,7 +39,7 @@ int b_strength_counter = 1; //1, 2 or 3
 
 //General
 #define UPDATE_INTERVALL 50 //The intervall in ms in which we scan and send the new data
-#define DEBUG true 
+#define DEBUG false 
 
 // ------------------------------------------------------------------------------------------------------
 
@@ -53,6 +56,8 @@ struct Transmission_Data {
 //https://howtomechatronics.com/tutorials/arduino/arduino-wireless-communication-nrf24l01-tutorial/
 
 void setup() {
+
+  disable_all = false;
 
   Serial.begin(9600);
   Serial.println("Starting ROBO_BOB_CONTROLLER - Juhu");
@@ -93,12 +98,17 @@ void setup() {
 
 void loop() {
 
-  updateJoystickData();
-  updateButtonState();
-  Transmission_Data data = createTransmittionData(js_button_toggle, b_strength_counter, js_x, js_y);
-  sendData(data);
-  updateVisuals();
-  delay(UPDATE_INTERVALL);
+  updateButtonState(); //Enables / Disables everything so keep checking
+  if(disable_all == false) {
+    updateJoystickData();
+    Transmission_Data data = createTransmittionData(js_button_toggle, b_strength_counter, js_x, js_y);
+    sendData(data); 
+    updateVisuals();
+    delay(UPDATE_INTERVALL);
+  }else {
+    updateVisuals(); //Keep updating visuals
+    delay(UPDATE_INTERVALL); //Always on a delay
+  }
   
 }
 
@@ -131,9 +141,9 @@ void updateJoystickData() {
 void js_button_action(bool newState) {
   if(newState == 1) {
     //Now pressed
-    js_button_toggle = !js_button_toggle;
   }else {
     //Now released
+    js_button_toggle = !js_button_toggle;
   }
 }
 
@@ -147,25 +157,45 @@ int removeZeroJiggle(int value) {
 
 // ------------------------------------------------------------------------------------------------------
 
+long time_counter = 0;
 //Reads the values from the external button and updates the representing vars
 void updateButtonState() {
 
   bool newState = digitalRead(B_PIN);
+  
   if(newState != b_state) {
-    //Pressed or released
-    if(newState == true) {
-      //Now pressed
-      b_state_toggle = true;
-    
-      //Do toggle action here
-      b_strength_counter = b_strength_counter+1;
-      if(b_strength_counter > 3) {
-        b_strength_counter = 1;
+    //Some change of state
+    time_counter = 0; //Reset on change
+    if(disable_all == false) {
+      //If not disabled do normal action
+      if(newState == true) {
+        //Now pressed
+        b_state_toggle = true;
+      }else {
+        //Now released
+        b_state_toggle = false;
+
+        //Do toggle action here
+        b_strength_counter = b_strength_counter+1;
+        if(b_strength_counter > 3) {
+          b_strength_counter = 1;
+        }
+        
+      } 
+    }
+  }else {
+    //Same state
+    if(newState == true && time_counter >= 50) { //50 is a try and error delay for a long button press in correlation to the delay during disable time
+      //Button is pressed for some while
+      if(disable_all == true) {
+        //Only reduce once to counter button update on release
+        b_strength_counter = b_strength_counter-1;
       }
-    
+      disable_all = !disable_all;
+      time_counter = 0; //Reset after update
+      Serial.print("New active state: "); Serial.println(disable_all);
     }else {
-      //Now released
-      b_state_toggle = false;
+      time_counter++;
     }
   }
   b_state = newState;
@@ -197,28 +227,40 @@ void sendData(Transmission_Data data) {
 //Debug in console and set display led states
 void updateVisuals() {
   if(DEBUG == true) {
-    Serial.print("Data send [Size = "); Serial.print(sizeof(Transmission_Data)); Serial.println(" bytes]");
+    if(disable_all == false) {
+      Serial.print("Data send [Size = "); Serial.print(sizeof(Transmission_Data)); Serial.println(" bytes]"); 
+    }else {
+      Serial.println("Actions disabled!"); 
+    }
   }
   //MODE
-  if(js_button_toggle == true) {
-    digitalWrite(L_MODE, HIGH);
+  if(disable_all == false) {
+    if(js_button_toggle == true) {
+      digitalWrite(L_MODE, HIGH);
+    }else {
+      digitalWrite(L_MODE, LOW);
+    }
+    //STRENGTH
+    if(b_strength_counter == 1) {
+      digitalWrite(L_STRENGTH_1, HIGH);
+      digitalWrite(L_STRENGTH_2, LOW);
+      digitalWrite(L_STRENGTH_3, LOW);
+    }else if(b_strength_counter == 2) {
+      digitalWrite(L_STRENGTH_1, HIGH);
+      digitalWrite(L_STRENGTH_2, HIGH);
+      digitalWrite(L_STRENGTH_3, LOW);
+    }else if(b_strength_counter == 3) {
+      digitalWrite(L_STRENGTH_1, HIGH);
+      digitalWrite(L_STRENGTH_2, HIGH);
+      digitalWrite(L_STRENGTH_3, HIGH);
+    }else {
+      digitalWrite(L_STRENGTH_1, LOW);
+      digitalWrite(L_STRENGTH_2, LOW);
+      digitalWrite(L_STRENGTH_3, LOW);
+    }
   }else {
+    //Show deactive state
     digitalWrite(L_MODE, LOW);
-  }
-  //STRENGTH
-  if(b_strength_counter == 1) {
-    digitalWrite(L_STRENGTH_1, HIGH);
-    digitalWrite(L_STRENGTH_2, LOW);
-    digitalWrite(L_STRENGTH_3, LOW);
-  }else if(b_strength_counter == 2) {
-    digitalWrite(L_STRENGTH_1, HIGH);
-    digitalWrite(L_STRENGTH_2, HIGH);
-    digitalWrite(L_STRENGTH_3, LOW);
-  }else if(b_strength_counter == 3) {
-    digitalWrite(L_STRENGTH_1, HIGH);
-    digitalWrite(L_STRENGTH_2, HIGH);
-    digitalWrite(L_STRENGTH_3, HIGH);
-  }else {
     digitalWrite(L_STRENGTH_1, LOW);
     digitalWrite(L_STRENGTH_2, LOW);
     digitalWrite(L_STRENGTH_3, LOW);
